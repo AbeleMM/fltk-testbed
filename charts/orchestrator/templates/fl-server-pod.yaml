@@ -31,6 +31,7 @@ spec:
         - mountPath: /opt/federation-lab/output
           name: fl-server-claim
           readOnly: true
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
   restartPolicy: Never
   volumes:
     - name: fl-server-claim

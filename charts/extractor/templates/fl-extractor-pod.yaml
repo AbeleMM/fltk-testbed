@@ -45,6 +45,7 @@ spec:
               exec:
                 command:
                   - "killall -9 tensorboard"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
       volumes:
         - name: fl-server-claim
           persistentVolumeClaim:

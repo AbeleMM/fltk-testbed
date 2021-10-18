@@ -4,3 +4,5 @@ provider:
     domain: gcr.io
     projectName: cs4215-21-22
     imageName: fltk:latest
+image:
+  pullPolicy: Always
