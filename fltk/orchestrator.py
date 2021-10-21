@@ -1,11 +1,15 @@
 import logging
 import time
 import uuid
-from queue import PriorityQueue
+from queue import PriorityQueue, Queue
 from typing import List
 
 from kubeflow.pytorchjob import PyTorchJobClient
-from kubeflow.pytorchjob.constants.constants import PYTORCHJOB_GROUP, PYTORCHJOB_VERSION, PYTORCHJOB_PLURAL
+from kubeflow.pytorchjob.constants.constants import (
+    PYTORCHJOB_GROUP,
+    PYTORCHJOB_VERSION,
+    PYTORCHJOB_PLURAL,
+)
 from kubernetes import client
 
 from fltk.util.cluster.client import construct_job, ClusterManager
@@ -30,18 +34,34 @@ class Orchestrator(object):
     to be scheduled, than that there are resources, as such, letting the Kubernetes Scheduler let decide when to run
     which containers where.
     """
+
     _alive = False
+    # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCLS"}
+    chosen_struct = 0
+
     # Priority queue, requires an orderable object, otherwise a Tuple[int, Any] can be used to insert.
-    pending_tasks: "PriorityQueue[ArrivalTask]" = PriorityQueue()
+    pending_tasks = None
     deployed_tasks: List[ArrivalTask] = []
     completed_tasks: List[str] = []
 
-    def __init__(self, cluster_mgr: ClusterManager, arv_gen: ArrivalGenerator, config: BareConfig):
-        self.__logger = logging.getLogger('Orchestrator')
+    def __init__(
+        self, cluster_mgr: ClusterManager, arv_gen: ArrivalGenerator, config: BareConfig
+    ):
+        self.__logger = logging.getLogger("Orchestrator")
         self.__logger.debug("Loading in-cluster configuration")
         self.__cluster_mgr = cluster_mgr
         self.__arrival_generator = arv_gen
         self._config = config
+
+        if self.chosen_struct == 0:
+            # Use FCFS datastruct
+            self.pending_tasks = Queue()
+        elif self.chosen_struct == 1:
+            # Use PriorityQueue
+            self.pending_tasks = PriorityQueue()
+        else:
+            # Use stack/list for LCLS algo
+            self.pending_tasks = []
 
         # API to interact with the cluster.
         self.__client = PyTorchJobClient()
@@ -75,38 +95,56 @@ class Orchestrator(object):
             while not self.__arrival_generator.arrivals.empty():
                 arrival: Arrival = self.__arrival_generator.arrivals.get()
                 unique_identifier: uuid.UUID = uuid.uuid4()
-                task = ArrivalTask(priority=arrival.get_priority(),
-                                   id=unique_identifier,
-                                   network=arrival.get_network(),
-                                   dataset=arrival.get_dataset(),
-                                   sys_conf=arrival.get_system_config(),
-                                   param_conf=arrival.get_parameter_config())
+                task = ArrivalTask(
+                    priority=arrival.get_priority(),
+                    id=unique_identifier,
+                    network=arrival.get_network(),
+                    dataset=arrival.get_dataset(),
+                    sys_conf=arrival.get_system_config(),
+                    param_conf=arrival.get_parameter_config(),
+                )
 
                 self.__logger.debug(f"Arrival of: {task}")
-                self.pending_tasks.put(task)
+                if self.chosen_struct == 1 or self.chosen_struct == 0:
+                    self.pending_tasks.put(task)
+                else:
+                    self.pending_tasks.append(task)
 
-            while not self.pending_tasks.empty():
-                # Do blocking request to priority queue
-                curr_task = self.pending_tasks.get()
-                self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
-                job_to_start = construct_job(self._config, curr_task)
+            if self.chosen_struct == 1 or self.chosen_struct == 0:
+                while not self.pending_tasks.empty():
+                    # Do blocking request to priority queue/queue
+                    curr_task = self.pending_tasks.get()
 
+                    self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
+                    job_to_start = construct_job(self._config, curr_task)
 
-                # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
-                self.__logger.info(f"Deploying on cluster: {curr_task.id}")
-                self.__client.create(job_to_start, namespace=self._config.cluster_config.namespace)
-                self.deployed_tasks.append(curr_task)
+                    # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
+                    self.__logger.info(f"Deploying on cluster: {curr_task.id}")
+                    self.__client.create(
+                        job_to_start, namespace=self._config.cluster_config.namespace
+                    )
+                    self.deployed_tasks.append(curr_task)
 
-                # TODO: Extend this logic in your real project, this is only meant for demo purposes
-                # For now we exit the thread after scheduling a single task.
+                    # TODO: Extend this logic in your real project, this is only meant for demo purposes
+                    # For now we exit the thread after scheduling a single task.
+            else:
+                while not self.pending_tasks:
+                    curr_task = self.pending_tasks.pop()
 
-                self.stop()
-                return
+                    self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
+                    job_to_start = construct_job(self._config, curr_task)
+
+                    # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
+                    self.__logger.info(f"Deploying on cluster: {curr_task.id}")
+                    self.__client.create(
+                        job_to_start, namespace=self._config.cluster_config.namespace
+                    )
+                    self.deployed_tasks.append(curr_task)
 
             self.__logger.debug("Still alive...")
             time.sleep(5)
 
-        logging.info(f'Experiment completed, currently does not support waiting.')
+        logging.info(f"Experiment completed, currently does not support waiting.")
 
     def __clear_jobs(self):
         """
@@ -115,18 +153,21 @@ class Orchestrator(object):
         @rtype: None
         """
         namespace = self._config.cluster_config.namespace
-        self.__logger.info(f'Clearing old jobs in current namespace: {namespace}')
+        self.__logger.info(f"Clearing old jobs in current namespace: {namespace}")
 
-        for job in self.__client.get(namespace=self._config.cluster_config.namespace)['items']:
-            job_name = job['metadata']['name']
-            self.__logger.info(f'Deleting: {job_name}')
+        for job in self.__client.get(namespace=self._config.cluster_config.namespace)[
+            "items"
+        ]:
+            job_name = job["metadata"]["name"]
+            self.__logger.info(f"Deleting: {job_name}")
             try:
                 self.__client.custom_api.delete_namespaced_custom_object(
                     PYTORCHJOB_GROUP,
                     PYTORCHJOB_VERSION,
                     namespace,
                     PYTORCHJOB_PLURAL,
-                    job_name)
+                    job_name,
+                )
             except Exception as e:
-                self.__logger.warning(f'Could not delete: {job_name}')
+                self.__logger.warning(f"Could not delete: {job_name}")
                 print(e)
