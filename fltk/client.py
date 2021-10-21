@@ -9,6 +9,8 @@ import torch.distributed as dist
 from sklearn.metrics import confusion_matrix
 from torch.utils.tensorboard import SummaryWriter
 
+import psutil
+
 from fltk.nets.util import calculate_class_precision, calculate_class_recall, save_model, load_model_from_file
 from fltk.schedulers import MinCapableStepLR, LearningScheduler
 from fltk.util.config.arguments import LearningParameters
@@ -220,7 +222,9 @@ class Client(object):
         start_time_train = datetime.datetime.now()
         epoch_results = []
         for epoch in range(1, max_epoch):
+            psutil.cpu_percent(interval=None)
             train_loss = self.train(epoch)
+            avg_cpu_util = psutil.cpu_percent(interval=None)
 
             # Let only the 'master node' work on training. Possibly DDP can be used
             # to have a distributed test loader as well to speed up (would require
@@ -243,11 +247,16 @@ class Client(object):
                              loss=test_loss,
                              class_precision=class_precision,
                              class_recall=class_recall,
-                             confusion_mat=confusion_mat)
+                             confusion_mat=confusion_mat,
+                             avg_cpu_util=avg_cpu_util)
 
             epoch_results.append(data)
-            if self._id == 0:
-                self.log_progress(data, epoch)
+            #if self._id == 0:
+                #self.log_progress(data, epoch)
+
+        if self._id == 0:
+            self.log_overall_progress(epoch_results)
+        self.tb_writer.close()
         return epoch_results
 
     def save_model(self, epoch):
@@ -276,3 +285,22 @@ class Client(object):
         self.tb_writer.add_scalar('accuracy per epoch',
                                   epoch_data.accuracy,
                                   epoch)
+
+    def log_overall_progress(self, epoch_results: List[EpochData]):
+        """
+        Function to log the averaged progress of the learner after all epochs have completed.
+        @param epoch_results: full list of epoch results
+        @type epoch_results: List[EpochData]
+        """
+
+        self.tb_writer.add_text('mean processor utilization',
+                                str(np.mean([x.avg_cpu_util for x in epoch_results])),
+                                0)
+
+        self.tb_writer.add_text('mean train duration',
+                                str(np.mean([x.duration_train for x in epoch_results])),
+                                0)
+
+        self.tb_writer.add_text('mean accuracy',
+                                str(np.mean([x.accuracy for x in epoch_results])),
+                                0)

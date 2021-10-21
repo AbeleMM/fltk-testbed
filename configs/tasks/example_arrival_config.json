@@ -3,13 +3,13 @@
     "jobClassParameters": [
       {
         "networkConfiguration": {
-          "network": "FashionMNISTCNN",
-          "dataset": "MNIST"
+          "network": "FASHIONMNISTCNN",
+          "dataset": "FASHIONMNIST"
         },
         "systemParameters": {
           "dataParallelism": "1",
-          "executorCores": "750m",
-          "executorMemory": "1Gi",
+          "executorCores": "1000m",
+          "executorMemory": "8Gi",
           "action": "train"
         },
         "hyperParameters": {
@@ -31,4 +31,3 @@
     "preemptJobs": 0
   }
 ]
-

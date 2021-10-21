@@ -14,4 +14,5 @@ class EpochData:
     class_precision: np.array
     class_recall: np.array
     confusion_mat: np.array
+    avg_cpu_util: float
     client_id: str = None

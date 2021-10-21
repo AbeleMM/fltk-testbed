@@ -6,3 +6,4 @@ logging/
 **/__pycache__
 
 util/
+jupyter/
