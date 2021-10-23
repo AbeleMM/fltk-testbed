@@ -36,7 +36,7 @@ class Orchestrator(object):
     """
 
     _alive = False
-    # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCLS"}
+    # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCFS"}
     chosen_struct = 1
 
     # Priority queue, requires an orderable object, otherwise a Tuple[int, Any] can be used to insert.
@@ -60,7 +60,7 @@ class Orchestrator(object):
             # Use PriorityQueue
             self.pending_tasks = PriorityQueue()
         else:
-            # Use stack/list for LCLS algo
+            # Use stack/list for LCFS algo
             self.pending_tasks = []
 
         # API to interact with the cluster.
