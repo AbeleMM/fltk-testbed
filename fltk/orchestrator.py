@@ -37,7 +37,7 @@ class Orchestrator(object):
 
     _alive = False
     # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCLS"}
-    chosen_struct = 0
+    chosen_struct = 1
 
     # Priority queue, requires an orderable object, otherwise a Tuple[int, Any] can be used to insert.
     pending_tasks = None
@@ -128,7 +128,7 @@ class Orchestrator(object):
                     # TODO: Extend this logic in your real project, this is only meant for demo purposes
                     # For now we exit the thread after scheduling a single task.
             else:
-                while not self.pending_tasks:
+                while self.pending_tasks:
                     curr_task = self.pending_tasks.pop()
 
                     self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
@@ -143,6 +143,9 @@ class Orchestrator(object):
 
             self.__logger.debug("Still alive...")
             time.sleep(5)
+
+            self.stop()
+            return
 
         logging.info(f"Experiment completed, currently does not support waiting.")
 
