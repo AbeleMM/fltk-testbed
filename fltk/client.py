@@ -9,7 +9,12 @@ import torch.distributed as dist
 from sklearn.metrics import confusion_matrix
 from torch.utils.tensorboard import SummaryWriter
 
-from fltk.nets.util import calculate_class_precision, calculate_class_recall, save_model, load_model_from_file
+from fltk.nets.util import (
+    calculate_class_precision,
+    calculate_class_recall,
+    save_model,
+    load_model_from_file,
+)
 from fltk.schedulers import MinCapableStepLR, LearningScheduler
 from fltk.util.config.arguments import LearningParameters
 from fltk.util.config.base_config import BareConfig
@@ -17,9 +22,14 @@ from fltk.util.results import EpochData
 
 
 class Client(object):
-
-    def __init__(self, rank: int, task_id: str, world_size: int, config: BareConfig = None,
-                 learning_params: LearningParameters = None):
+    def __init__(
+        self,
+        rank: int,
+        task_id: str,
+        world_size: int,
+        config: BareConfig = None,
+        learning_params: LearningParameters = None,
+    ):
         """
         @param rank: PyTorch rank provided by KubeFlow setup.
         @type rank: int
@@ -30,7 +40,7 @@ class Client(object):
         @param learning_params: Hyper-parameter configuration to be used during the training process by the learner.
         @type learning_params: LearningParameters
         """
-        self._logger = logging.getLogger(f'Client-{rank}-{task_id}')
+        self._logger = logging.getLogger(f"Client-{rank}-{task_id}")
 
         self._logger.info("Initializing learning client")
         self._id = rank
@@ -42,8 +52,9 @@ class Client(object):
 
         # Create model and dataset
         self.loss_function = self.learning_params.get_loss()()
-        self.dataset = self.learning_params.get_dataset_class()(self.config, self.learning_params, self._id,
-                                                                self._world_size)
+        self.dataset = self.learning_params.get_dataset_class()(
+            self.config, self.learning_params, self._id, self._world_size
+        )
         self.model = self.learning_params.get_model_class()()
         self.device = self._init_device()
 
@@ -68,16 +79,23 @@ class Client(object):
             self.model = torch.nn.parallel.DistributedDataParallel(self.model)
 
         # Currently it is assumed to use an SGD optimizer. **kwargs need to be used to launch this properly
-        self.optimizer = self.learning_params.get_optimizer()(self.model.parameters(),
-                                                              lr=self.learning_params.learning_rate,
-                                                              momentum=0.9)
-        self.scheduler = MinCapableStepLR(self.optimizer,
-                                          self.config.get_scheduler_step_size(),
-                                          self.config.get_scheduler_gamma(),
-                                          self.config.get_min_lr())
+        self.optimizer = self.learning_params.get_optimizer()(
+            self.model.parameters(), lr=self.learning_params.learning_rate, momentum=0.9
+        )
+        self.scheduler = MinCapableStepLR(
+            self.optimizer,
+            self.config.get_scheduler_step_size(),
+            self.config.get_scheduler_gamma(),
+            self.config.get_min_lr(),
+        )
 
         self.tb_writer = SummaryWriter(
-            str(self.config.get_log_path(self._task_id, self._id, self.learning_params.model)))
+            str(
+                self.config.get_log_path(
+                    self._task_id, self._id, self.learning_params.model
+                )
+            )
+        )
 
     def stop_learner(self):
         """
@@ -88,7 +106,7 @@ class Client(object):
         self._logger.info(f"Tearing down Client {self._id}")
         self.tb_writer.close()
 
-    def _init_device(self, cuda_device: torch.device = torch.device(f'cpu')):
+    def _init_device(self, cuda_device: torch.device = torch.device(f"cpu")):
         """
         Initialize Torch to use available devices. Either prepares CUDA device, or disables CUDA during execution to run
         with CPU only inference/training.
@@ -112,8 +130,10 @@ class Client(object):
         model.
         """
 
-        model_file = Path(f'{self.model.__name__}.model')
-        default_model_path = Path(self.config.get_default_model_folder_path()).joinpath(model_file)
+        model_file = Path(f"{self.model.__name__}.model")
+        default_model_path = Path(self.config.get_default_model_folder_path()).joinpath(
+            model_file
+        )
         load_model_from_file(self.model, default_model_path)
 
     def train(self, epoch, log_interval: int = 50):
@@ -147,7 +167,9 @@ class Client(object):
 
             running_loss += float(loss.detach().item())
             if i % log_interval == 0:
-                self._logger.info('[%d, %5d] loss: %.3f' % (epoch, i, running_loss / log_interval))
+                self._logger.info(
+                    "[%d, %5d] loss: %.3f" % (epoch, i, running_loss / log_interval)
+                )
                 final_running_loss = running_loss / log_interval
                 running_loss = 0.0
         self.scheduler.step()
@@ -201,8 +223,10 @@ class Client(object):
         class_precision: np.array = calculate_class_precision(confusion_mat)
         class_recall: np.array = calculate_class_recall(confusion_mat)
 
-        self._logger.debug('Test set: Accuracy: {}/{} ({:.0f}%)'.format(correct, total, accuracy))
-        self._logger.debug('Test set: Loss: {}'.format(loss))
+        self._logger.debug(
+            "Test set: Accuracy: {}/{} ({:.0f}%)".format(correct, total, accuracy)
+        )
+        self._logger.debug("Test set: Loss: {}".format(loss))
         self._logger.debug("Confusion Matrix:\n" + str(confusion_mat))
         self._logger.debug("Class precision: {}".format(str(class_precision)))
         self._logger.debug("Class recall: {}".format(str(class_recall)))
@@ -218,6 +242,10 @@ class Client(object):
         """
         max_epoch = self.learning_params.max_epoch + 1
         start_time_train = datetime.datetime.now()
+
+        # log start service time of train
+        self._logger.info(f"START SERVICE TIME: {start_time_train}")
+
         epoch_results = []
         for epoch in range(1, max_epoch):
             train_loss = self.train(epoch)
@@ -230,31 +258,49 @@ class Client(object):
             train_time_ms = int(elapsed_time_train.total_seconds() * 1000)
 
             start_time_test = datetime.datetime.now()
-            accuracy, test_loss, class_precision, class_recall, confusion_mat = self.test()
+            (
+                accuracy,
+                test_loss,
+                class_precision,
+                class_recall,
+                confusion_mat,
+            ) = self.test()
 
             elapsed_time_test = datetime.datetime.now() - start_time_test
             test_time_ms = int(elapsed_time_test.total_seconds() * 1000)
 
-            data = EpochData(epoch_id=epoch,
-                             duration_train=train_time_ms,
-                             duration_test=test_time_ms,
-                             loss_train=train_loss,
-                             accuracy=accuracy,
-                             loss=test_loss,
-                             class_precision=class_precision,
-                             class_recall=class_recall,
-                             confusion_mat=confusion_mat)
+            data = EpochData(
+                epoch_id=epoch,
+                duration_train=train_time_ms,
+                duration_test=test_time_ms,
+                loss_train=train_loss,
+                accuracy=accuracy,
+                loss=test_loss,
+                class_precision=class_precision,
+                class_recall=class_recall,
+                confusion_mat=confusion_mat,
+            )
 
             epoch_results.append(data)
             if self._id == 0:
                 self.log_progress(data, epoch)
+
+        end_service_time = datetime.datetime.now()
+        service_time = end_service_time - start_time_train
+
+        # log end service time of train
+        self._logger.info(f"END SERVICE TIME: {end_service_time}")
+        self._logger.info(f"SERVICE TIME: {service_time.total_seconds()}")
+
         return epoch_results
 
     def save_model(self, epoch):
         """
         @deprecated Move function to utils directory.
         """
-        self._logger.debug(f"Saving model to flat file storage. Saved at epoch #{epoch}")
+        self._logger.debug(
+            f"Saving model to flat file storage. Saved at epoch #{epoch}"
+        )
         save_model(self.model, self.config.get_save_model_folder_path(), epoch)
 
     def log_progress(self, epoch_data: EpochData, epoch: int):
@@ -269,10 +315,8 @@ class Client(object):
         @rtype: None
         """
 
-        self.tb_writer.add_scalar('training loss per epoch',
-                                  epoch_data.loss_train,
-                                  epoch)
+        self.tb_writer.add_scalar(
+            "training loss per epoch", epoch_data.loss_train, epoch
+        )
 
-        self.tb_writer.add_scalar('accuracy per epoch',
-                                  epoch_data.accuracy,
-                                  epoch)
+        self.tb_writer.add_scalar("accuracy per epoch", epoch_data.accuracy, epoch)
