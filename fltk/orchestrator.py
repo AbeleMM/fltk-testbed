@@ -52,6 +52,7 @@ class Orchestrator(object):
         self.__cluster_mgr = cluster_mgr
         self.__arrival_generator = arv_gen
         self._config = config
+        self.max_jobs_running = 1
 
         if self.chosen_struct == 0:
             # Use FCFS datastruct
@@ -112,40 +113,80 @@ class Orchestrator(object):
 
             if self.chosen_struct == 1 or self.chosen_struct == 0:
                 while not self.pending_tasks.empty():
-                    # Do blocking request to priority queue/queue
-                    curr_task = self.pending_tasks.get()
+                    if self.deployed_tasks:
+                        time.sleep(10)
+                        job_name = (
+                            self.__client.get(
+                                namespace=self._config.cluster_config.namespace
+                            )["items"][0]["metadata"]["name"]
+                            + "-master-0"
+                        )
+                        self.__logger.info(job_name)
+                        is_running = self.__client.is_job_succeeded(
+                            job_name,
+                            namespace=self._config.cluster_config.namespace,
+                        )
+                        if is_running:
+                            self.deployed_tasks.pop()
 
-                    self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
-                    job_to_start = construct_job(self._config, curr_task)
+                    if len(self.deployed_tasks) < self.max_jobs_running:
+                        # Do blocking request to priority queue/queue
+                        curr_task = self.pending_tasks.get()
 
-                    # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
-                    self.__logger.info(f"Deploying on cluster: {curr_task.id}")
-                    self.__client.create(
-                        job_to_start, namespace=self._config.cluster_config.namespace
-                    )
-                    self.deployed_tasks.append(curr_task)
+                        self.__logger.info(
+                            f"Scheduling arrival of Arrival: {curr_task.id}"
+                        )
+                        job_to_start = construct_job(self._config, curr_task)
 
-                    # TODO: Extend this logic in your real project, this is only meant for demo purposes
-                    # For now we exit the thread after scheduling a single task.
+                        # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
+                        self.__logger.info(f"Deploying on cluster: {curr_task.id}")
+                        self.__client.create(
+                            job_to_start,
+                            namespace=self._config.cluster_config.namespace,
+                        )
+                        self.deployed_tasks.append(curr_task)
+
+                        # TODO: Extend this logic in your real project, this is only meant for demo purposes
+                        # For now we exit the thread after scheduling a single task.
             else:
                 while self.pending_tasks:
-                    curr_task = self.pending_tasks.pop()
+                    if self.deployed_tasks:
+                        time.sleep(10)
+                        job_name = (
+                            self.__client.get(
+                                namespace=self._config.cluster_config.namespace
+                            )["items"][0]["metadata"]["name"]
+                            + "-master-0"
+                        )
+                        self.__logger.info(job_name)
+                        is_running = self.__client.is_job_succeeded(
+                            job_name,
+                            namespace=self._config.cluster_config.namespace,
+                        )
+                        if is_running:
+                            self.deployed_tasks.pop()
 
-                    self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
-                    job_to_start = construct_job(self._config, curr_task)
+                    if len(self.deployed_tasks) < self.max_jobs_running:
+                        curr_task = self.pending_tasks.pop()
 
-                    # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
-                    self.__logger.info(f"Deploying on cluster: {curr_task.id}")
-                    self.__client.create(
-                        job_to_start, namespace=self._config.cluster_config.namespace
-                    )
-                    self.deployed_tasks.append(curr_task)
+                        self.__logger.info(
+                            f"Scheduling arrival of Arrival: {curr_task.id}"
+                        )
+                        job_to_start = construct_job(self._config, curr_task)
+
+                        # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
+                        self.__logger.info(f"Deploying on cluster: {curr_task.id}")
+                        self.__client.create(
+                            job_to_start,
+                            namespace=self._config.cluster_config.namespace,
+                        )
+                        self.deployed_tasks.append(curr_task)
 
             self.__logger.debug("Still alive...")
             time.sleep(5)
 
-            self.stop()
-            return
+            # self.stop()
+            # return
 
         logging.info(f"Experiment completed, currently does not support waiting.")
 
