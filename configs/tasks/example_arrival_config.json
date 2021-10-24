@@ -4,17 +4,48 @@
       {
         "networkConfiguration": {
           "network": "FashionMNISTCNN",
-          "dataset": "MNIST"
+          "dataset": "FashionMNIST"
         },
         "systemParameters": {
           "dataParallelism": "1",
-          "executorCores": "750m",
-          "executorMemory": "1Gi",
+          "executorCores": "3500m",
+          "executorMemory": "4Gi",
           "action": "train"
         },
         "hyperParameters": {
           "batchSize": "128",
-          "maxEpoch": "5",
+          "maxEpoch": "3",
+          "learningRate": "0.01",
+          "learningrateDecay": "0.0002"
+        },
+        "classProbability": 0.1,
+        "priorities": [
+          {
+            "priority": 2,
+            "probability": 1
+          }
+        ]
+      }
+    ],
+    "lambda": 20,
+    "preemptJobs": 0
+  },
+  {
+    "jobClassParameters": [
+      {
+        "networkConfiguration": {
+          "network": "FashionMNISTCNN",
+          "dataset": "FashionMNIST"
+        },
+        "systemParameters": {
+          "dataParallelism": "1",
+          "executorCores": "3500m",
+          "executorMemory": "4Gi",
+          "action": "train"
+        },
+        "hyperParameters": {
+          "batchSize": "128",
+          "maxEpoch": "3",
           "learningRate": "0.01",
           "learningrateDecay": "0.0002"
         },
@@ -27,7 +58,7 @@
         ]
       }
     ],
-    "lambda": 20,
+    "lambda": 10,
     "preemptJobs": 0
   }
 ]
