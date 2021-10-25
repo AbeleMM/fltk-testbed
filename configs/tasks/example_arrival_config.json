@@ -38,7 +38,7 @@
           "dataset": "FashionMNIST"
         },
         "systemParameters": {
-          "dataParallelism": "1",
+          "dataParallelism": "4",
           "executorCores": "3500m",
           "executorMemory": "4Gi",
           "action": "train"
@@ -58,7 +58,7 @@
         ]
       }
     ],
-    "lambda": 10,
+    "lambda": 20,
     "preemptJobs": 0
   }
 ]

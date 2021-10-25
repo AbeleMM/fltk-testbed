@@ -37,7 +37,7 @@ class Orchestrator(object):
 
     _alive = False
     # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCFS"}
-    chosen_struct = 2
+    chosen_struct = 0
 
     # Priority queue, requires an orderable object, otherwise a Tuple[int, Any] can be used to insert.
     pending_tasks = None
@@ -66,7 +66,6 @@ class Orchestrator(object):
             # Use stack/list for LCFS algo
             self.pending_tasks = []
             self.__logger.info("Using LCFS algo")
-         
 
         # API to interact with the cluster.
         self.__client = PyTorchJobClient()
@@ -79,6 +78,38 @@ class Orchestrator(object):
         """
         self.__logger.info("Received stop signal for the Orchestrator.")
         self._alive = False
+
+    # def search_pytorchjob(self, job_items, name):
+    #     """
+    #     Return index of the job when found
+    #     Args:
+    #         job_items (List): List of items containing all pytorchjobs
+    #         name (String): The name of the job to search
+    #     """
+    #     self.__logger.info(f"Searching for job name {name} ...")
+    #     self.__logger.info(f"Length of job_items: {len(job_items)}")
+
+    #     for idx, item in enumerate(job_items):
+    #         self.__logger.info(f"Current job name: {item['metadata']['name']}")
+    #         if item["metadata"]["name"] == name:
+    #             self.__logger.info(f"Job {name} found!")
+    #             return idx
+    #     self.__logger.info(f"Job {name} not found! Returning 0 as default idx.")
+    #     return 0
+
+    # def is_job_completed(self, conditions_list):
+    #     """
+    #     format of conditions list: [
+    #         {'lastTransitionTime': '2021-10-25T17:44:50Z', 'lastUpdateTime': '2021-10-25T17:44:50Z', 'message': 'PyTorchJob trainjob-db1ea1b3-7118-4f8e-b47c-29741ed33efb is created.', 'reason': 'PyTorchJobCreated', 'status': 'True', 'type': 'Created'},
+    #         {'lastTransitionTime': '2021-10-25T17:44:52Z', 'lastUpdateTime': '2021-10-25T17:44:52Z', 'message': 'PyTorchJob trainjob-db1ea1b3-7118-4f8e-b47c-29741ed33efb is running.', 'reason': 'PyTorchJobRunning', 'status': 'True', 'type': 'Running'}
+    #     ]
+    #     """
+    #     job_completed = False
+    #     for job_status in conditions_list:
+    #         if job_status.get("type") == "Succeeded":
+    #             if job_status.get("status") == "True":
+    #                 job_completed = True
+    #     return job_completed
 
     def run(self, clear: bool = True) -> None:
         """
@@ -110,7 +141,9 @@ class Orchestrator(object):
                 )
 
                 self.__logger.info(
-                    f"Arrival task: {task} \n ARRIVAL TICKS: {arrival.ticks+self.__arrival_generator._decrement} \n"
+                    f"Arrival task: {task} \n \
+                     ARRIVAL TICKS: {arrival.ticks+self.__arrival_generator._decrement} \
+                      \n"
                 )
 
                 if self.chosen_struct == 1 or self.chosen_struct == 0:
@@ -119,7 +152,7 @@ class Orchestrator(object):
                     self.pending_tasks.append(task)
 
             if self.chosen_struct == 1 or self.chosen_struct == 0:
-                while not self.pending_tasks.empty():
+                if not self.pending_tasks.empty():
                     # Do blocking request to priority queue
                     curr_task = self.pending_tasks.get()
                     self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
@@ -132,52 +165,18 @@ class Orchestrator(object):
                     )
                     # self.deployed_tasks.append(curr_task)
 
-                    job_name = self.__client.get(
-                        namespace=self._config.cluster_config.namespace
-                    )["items"][0]["metadata"]["name"]
-
-                    self.__client.wait_for_condition(
+                    job_name = "trainjob-" + str(curr_task.id)
+                    self.__client.wait_for_job(
                         job_name,
-                        expected_condition=["Succeeded"],
                         namespace=self._config.cluster_config.namespace,
+                        timeout_seconds=self._config.get_duration()
+                        - time.time()
+                        + start_time,
+                        polling_interval=1,
                     )
-
                     self.completed_tasks.append(curr_task)
-
-                    # if self.deployed_tasks:
-                    #     self.deployed_tasks.pop()
-
-                    # if len(self.deployed_tasks) < self.max_jobs_running:
-                    # Do blocking request to priority queue/queue
-                    # curr_task = self.pending_tasks.get()
-                    # self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
-                    # job_to_start = construct_job(self._config, curr_task)
-
-                    # # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
-                    # self.__logger.info(f"Deploying on cluster: {curr_task.id}")
-                    # self.__client.create(
-                    #     job_to_start,
-                    #     namespace=self._config.cluster_config.namespace,
-                    # )
-                    # self.deployed_tasks.append(curr_task)
-
-                    # # TODO: Extend this logic in your real project, this is only meant for demo purposes
-                    # # For now we exit the thread after scheduling a single task.
-                    # job_name = self.__client.get(
-                    #     namespace=self._config.cluster_config.namespace
-                    # )["items"][0]["metadata"]["name"]
-                    # self.__client.wait_for_condition(
-                    #     job_name,
-                    #     expected_condition=["Succeeded"],
-                    #     namespace=self._config.cluster_config.namespace,
-                    # )
-
-                    # self.__logger.info("Job Succeeded")
-                    # self.stop()
-                    # return
-
             else:
-                while self.pending_tasks:
+                if self.pending_tasks:
                     # Do blocking request to priority queue
                     curr_task = self.pending_tasks.pop()
                     self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
@@ -190,46 +189,17 @@ class Orchestrator(object):
                     )
                     # self.deployed_tasks.append(curr_task)
 
-                    job_name = self.__client.get(
-                        namespace=self._config.cluster_config.namespace
-                    )["items"][0]["metadata"]["name"]
-
-                    self.__client.wait_for_condition(
+                    job_name = "trainjob-" + str(curr_task.id)
+                    self.__client.wait_for_job(
                         job_name,
-                        expected_condition=["Succeeded"],
                         namespace=self._config.cluster_config.namespace,
+                        timeout_seconds=self._config.get_duration()
+                        - time.time()
+                        + start_time,
+                        polling_interval=1,
                     )
-
                     self.completed_tasks.append(curr_task)
 
-                    # if self.deployed_tasks:
-                    #     self.deployed_tasks.pop()
-
-                    # if len(self.deployed_tasks) < self.max_jobs_running:
-                    # curr_task = self.pending_tasks.pop()
-
-                    # self.__logger.info(f"Scheduling arrival of Arrival: {curr_task.id}")
-                    # job_to_start = construct_job(self._config, curr_task)
-
-                    # # Hack to overcome limitation of KubeFlow version (Made for older version of Kubernetes)
-                    # self.__logger.info(f"Deploying on cluster: {curr_task.id}")
-                    # self.__client.create(
-                    #     job_to_start,
-                    #     namespace=self._config.cluster_config.namespace,
-                    # )
-                    # self.deployed_tasks.append(curr_task)
-
-                    # job_name = self.__client.get(
-                    #     namespace=self._config.cluster_config.namespace
-                    # )["items"][0]["metadata"]["name"]
-                    # self.__client.wait_for_condition(
-                    #     job_name,
-                    #     expected_condition=["Succeeded"],
-                    #     namespace=self._config.cluster_config.namespace,
-                    # )
-                    # self.__logger.info("Job Succeeded")
-                    # self.stop()
-                    # return
         logging.info(f"Experiment completed, currently does not support waiting.")
         self.stop()
         return
