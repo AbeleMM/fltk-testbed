@@ -37,7 +37,7 @@ class Orchestrator(object):
 
     _alive = False
     # scheduling_datastructs = {0: "FCFS", 1: "Priority-based", 2: "LCFS"}
-    chosen_struct = 1
+    chosen_struct = 2
 
     # Priority queue, requires an orderable object, otherwise a Tuple[int, Any] can be used to insert.
     pending_tasks = None
@@ -57,12 +57,16 @@ class Orchestrator(object):
         if self.chosen_struct == 0:
             # Use FCFS datastruct
             self.pending_tasks = Queue()
+            self.__logger.info("Using FCFS algo")
         elif self.chosen_struct == 1:
             # Use PriorityQueue
             self.pending_tasks = PriorityQueue()
+            self.__logger.info("Using Priority-based algo")
         else:
             # Use stack/list for LCFS algo
             self.pending_tasks = []
+            self.__logger.info("Using LCFS algo")
+         
 
         # API to interact with the cluster.
         self.__client = PyTorchJobClient()
@@ -189,12 +193,15 @@ class Orchestrator(object):
                     job_name = self.__client.get(
                         namespace=self._config.cluster_config.namespace
                     )["items"][0]["metadata"]["name"]
+
                     self.__client.wait_for_condition(
                         job_name,
                         expected_condition=["Succeeded"],
                         namespace=self._config.cluster_config.namespace,
                     )
+
                     self.completed_tasks.append(curr_task)
+
                     # if self.deployed_tasks:
                     #     self.deployed_tasks.pop()
 
